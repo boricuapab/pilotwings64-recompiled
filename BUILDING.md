@@ -1,72 +1,67 @@
-# Building Guide
+# Build from source (Windows and Linux x64)
 
-This guide will help you build the project on your local machine. The process will require you to provide the ROM of the US version of the game.
+## Windows requirements
 
-These steps cover: preparing the ROM, running the recompiler and finally building the project.
+- Windows 10/11 x64 with a D3D12 or Vulkan-capable GPU.
+- Git, CMake 3.24 or newer, and Visual Studio 2022 with **Desktop development with C++**, a Windows SDK, and CMake/Ninja tools.
+- LLVM/Clang 19.1.7 on PATH, or pass its `bin` directory with `-LLVMPath`.
+- Ubuntu under WSL with the packages below.
+- Your own unmodified US big-endian `.z64` ROM, SHA1 `ec771aedf54ee1b214c25404fb4ec51cfd43191a`.
 
-## 1. Clone the Pilotwings64Recomp Repository
-This project makes use of submodules so you will need to clone the repository with the `--recurse-submodules` flag.
+In Ubuntu:
 
-```bash
-git clone --recurse-submodules
-# if you forgot to clone with --recurse-submodules
-# cd /path/to/cloned/repo && git submodule update --init --recursive
+```sh
+sudo apt-get update
+sudo apt-get install git cmake ninja-build build-essential clang lld python3
 ```
 
-## 2. Install Dependencies
+## Clone and build
 
-### Linux
-For Linux the instructions for Ubuntu are provided, but you can find the equivalent packages for your preferred distro.
-
-```bash
-# For Ubuntu, simply run:
-sudo apt-get install cmake ninja-build libsdl2-dev libgtk-3-dev lld llvm clang
+```powershell
+git clone https://github.com/boricuapab/pilotwings64-recompiled.git
+cd pilotwings64-recompiled
+./tools/build.ps1 -RomPath ./my-rom.z64
 ```
 
-### Windows
-You will need to install [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/).
-In the setup process you'll need to select the following options and tools for installation:
-- Desktop development with C++
-- C++ Clang Compiler for Windows
-- C++ CMake tools for Windows
+The ROM path can point anywhere readable from WSL. Substitute your actual file. ROM extensions and build products are ignored by Git. The repository and ROM paths are resolved at runtime; no particular checkout location or user account is required.
 
-The other tool necessary will be `make` which can be installe via [Chocolatey](https://chocolatey.org/):
-```bash
-choco install make
+Use `-Distro` if your WSL distribution has a different name. Use `-LLVMPath` to select a portable LLVM installation. PowerShell script execution must be enabled according to your normal local policy.
+
+The build script:
+
+1. Validates and reads the external ROM without copying it into the repository.
+2. Builds vendored N64Recomp at revision `ffb39cdad1da5de07eaaa48bd1db4a89a7986771` inside ignored `.tools/`.
+3. Generates game C code, audio RSP code, and MIPS patches under WSL.
+4. Builds a native Windows Release executable with Clang and the Visual Studio SDK.
+5. Packages the EXE, assets, runtime DLLs, instructions, and dependency licenses without a ROM.
+
+Output: `dist/Pilotwings64Recompiled/` and `releases/Pilotwings64Recompiled-Windows.zip`.
+
+After a C++-only edit, `-SkipGeneration` reuses previously generated files. After editing `patches/`, run the full command. Do not edit generated `RecompiledFuncs/`, `RecompiledPatches/`, or `rsp/aspMain.cpp`.
+
+## Source layout
+
+- `src/`: native game host and custom launcher.
+- `patches/widescreen.c`: CPU culling-frustum expansion; RT64 handles the GPU projection.
+- `lib/RecompFrontend/`: vendored frontend with explicit FPS presets; the original diff is retained in `tools/patches/frontend-fps.patch`.
+- `lib/` and `tools/N64Recomp/`: vendored dependency sources and required upstream SDK binaries, with licenses and revisions in `DEPENDENCIES.lock.json`.
+- `assets/`: launcher resources, including the custom splash.
+
+Some original upstream repositories are no longer publicly reachable. Their previously obtained open-source snapshots are included directly so a fresh checkout does not depend on those URLs. Only the documented system toolchains and CMake's public SDL2 download are external requirements. Do not run submodule updates: these dependencies are regular tracked directories.
+
+## Validation before publication
+
+Run `python3 tools/audit.py` (from WSL or another Python 3 environment). It checks publishable files and ZIP entries for ROM extensions, ROM headers, ROM hash matches, and private absolute paths. Build products and generated game sources are excluded by `.gitignore`. Release binaries use compiler path mapping so they do not expose the build machine's source paths.
+
+The audit permits 39 unchanged upstream fixture/SDK files containing example or third-party build paths. Their hashes are recorded in `tools/audit-upstream-paths.json` and verified against the pinned upstream Git objects. Changes invalidate those exceptions. Additional private prefixes can be checked using `--forbid`; these are never stored in the repository. Release ZIP contents have no such exceptions.
+
+## Native Linux x64 build
+
+On Ubuntu 24.04:
+
+```sh
+sudo apt-get install git cmake ninja-build build-essential clang lld python3 libsdl2-dev libgtk-3-dev libfreetype-dev libvulkan-dev
+bash tools/build-linux.sh /path/to/your/rom.z64
 ```
 
-## 3. Preparing the target ROM
-Pilotwings 64 does not contain any compressed code, so no additional steps are necessary to prepare the ROM.
-
-Simply copy the ROM to the root of the Pilotwings64Recomp repository with this filename:
-- `baserom.us.z64`
-
-## 4. Generating the C code
-
-Now that you have the required files, you must build [N64Recomp](https://github.com/Mr-Wiseguy/N64Recomp) and run it to generate the C code to be compiled. The building instructions can be found [here](https://github.com/Mr-Wiseguy/N64Recomp?tab=readme-ov-file#building). That will build the executables: `N64Recomp` and `RSPRecomp` which you should copy to the root of the Pilotwings64Recomp repository.
-
-After that, go back to the repository root, and run the following commands:
-```bash
-./N64Recomp pilotwings64.us.toml
-./RSPRecomp aspMain.us.toml
-```
-
-## 5. Building the Project
-
-Finally, you can build the project! :rocket:
-
-On Windows, you can open the repository folder with Visual Studio, and you'll be able to `[build / run / debug]` the project from there.
-
-If you prefer the command line or you're on a Unix platform you can build the project using CMake:
-
-```bash
-cmake -S . -B build-cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -G Ninja -DCMAKE_BUILD_TYPE=Release # or Debug if you want to debug
-cmake --build build-cmake --target Pilotwings64Recompiled -j$(nproc) --config Release # or Debug
-```
-
-## 6. Success
-
-Voilà! You should now have a `Pilotwings64Recompiled` executable in the build directory! If you used Visual Studio this will be `out/build/x64-[Configuration]` and if you used the provided CMake commands then this will be `build-cmake`. You will need to run the executable out of the root folder of this project or copy the assets folder to the build folder to run it.
-
-> [!IMPORTANT]
-> Children should not operate aircraft without adult supervision.
+The script reads the external ROM directly, uses the vendored recompiler, builds native Linux code, and creates `releases/Pilotwings64Recompiled-Linux-x64.zip`. Runtime requirements are in `LINUX-README.md`. Both packaging scripts update checksums for all release ZIPs.

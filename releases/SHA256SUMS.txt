@@ -1,0 +1,2 @@
+c43beae8098d95b414a70dab76783b16400f2dc7f8b1d31494e7d8f68c8c8392  Pilotwings64Recompiled-Linux-x64.zip
+d051965c58e7b102b9e7282bfbe2785b8b6dfa894fa50f416bb198e0ed3b73d7  Pilotwings64Recompiled-Windows.zip

@@ -1,0 +1,61 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+*.elf
+*.rom
+*.n64
+*.z64
+*.eeprom
+
+# Generated directories
+asm/
+bin/
+build/
+nonmatchings/
+
+# debug information files
+*.dwo
+
+# miscellaneous
+*.swp
+.venv/
+src/ultralib
+tools/n64crc
+.vscode/
+ctx.c
+__pycache__/

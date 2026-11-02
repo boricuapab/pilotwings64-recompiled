@@ -1,0 +1,44 @@
+diff --git a/recompui/src/config/ui_config_tab_graphics.cpp b/recompui/src/config/ui_config_tab_graphics.cpp
+index 4fdf81f..c3b3580 100644
+--- a/recompui/src/config/ui_config_tab_graphics.cpp
++++ b/recompui/src/config/ui_config_tab_graphics.cpp
+@@ -66,7 +66,7 @@ namespace recompui {
+ 
+         static EnumOptionVector aspect_ratio_options = {
+             {ultramodern::renderer::AspectRatio::Original, "Original"},
+-            {ultramodern::renderer::AspectRatio::Expand, "Expand"},
++            {ultramodern::renderer::AspectRatio::Expand, "Expand", "Widescreen"},
+             // {ultramodern::renderer::AspectRatio::Manual, "Manual"},
+         };
+ 
+@@ -78,6 +78,8 @@ namespace recompui {
+         };
+ 
+         static EnumOptionVector refresh_rate_options = {
++            {60u, "60FPS", "60 FPS"},
++            {120u, "120FPS", "120 FPS"},
+             {ultramodern::renderer::RefreshRate::Original, "Original"},
+             {ultramodern::renderer::RefreshRate::Display, "Display"},
+             {ultramodern::renderer::RefreshRate::Manual, "Manual"},
+@@ -174,6 +176,11 @@ namespace recompui {
+             new_config.rr_option = get_graphics_enum_value<ultramodern::renderer::RefreshRate>(graphics::options::rr_option);
+             new_config.hpfb_option = get_graphics_enum_value<ultramodern::renderer::HighPrecisionFramebuffer>(graphics::options::hpfb_option);
+             new_config.rr_manual_value = get_graphics_number_value<int>(graphics::options::rr_manual_value);
++            const auto preset = get_graphics_enum_value<uint32_t>(graphics::options::rr_option);
++            if (preset == 60 || preset == 120) {
++                new_config.rr_option = ultramodern::renderer::RefreshRate::Manual;
++                new_config.rr_manual_value = static_cast<int>(preset);
++            }
+ 
+             new_config.ds_option = get_graphics_enum_value<int>(graphics::options::ds_option);
+ 
+@@ -318,7 +325,8 @@ namespace recompui {
+                     graphics::options::rr_manual_value,
+                     graphics::options::rr_option,
+                     ultramodern::renderer::RefreshRate::Original,
+-                    ultramodern::renderer::RefreshRate::Display
++                    ultramodern::renderer::RefreshRate::Display,
++                    static_cast<ultramodern::renderer::RefreshRate>(60), static_cast<ultramodern::renderer::RefreshRate>(120)
+                 );
+             }
+ 

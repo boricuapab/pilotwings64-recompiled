@@ -1,0 +1,15 @@
+#ifndef MATH_MACROS_H
+#define MATH_MACROS_H
+
+#define PW_PI   3.1415927f
+#define PW_PI_2 1.5707963f // PI/2
+#define PW_PI_4 0.7853982f // PI/4
+
+#define RADIAN_TO_ANGLE_FACTOR (f32)(180/M_PI) // 57.29578f
+
+#define ROUNDF(val) (s32)(((val) >= 0.0f) ? ((val) + 0.5f) : ((val) - 0.5f))
+
+#define SWAP_XOR(v0, v1) (v0) ^= (v1); (v1) ^= (v0); (v0) ^= (v1);
+
+#endif // MATH_MACROS_H
+

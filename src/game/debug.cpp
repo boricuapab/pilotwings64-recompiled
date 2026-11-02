@@ -10,7 +10,7 @@ namespace pilotwings64 { std::string get_game_thread_name(const OSThread* t); }
 
 inline auto current_game_thread(uint8_t *rdram) -> std::string
 {
-    if (!ultramodern::is_entrypoint_thread()) {
+    if (ultramodern::this_thread() != 0) {
         return pilotwings64::get_game_thread_name(TO_PTR(OSThread, ultramodern::this_thread())).substr(7);
     } else {
         return "ENTRY";

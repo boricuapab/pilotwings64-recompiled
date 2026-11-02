@@ -5,6 +5,18 @@ if (APPLE)
 endif()
 
 project(Pilotwings64Recompiled LANGUAGES C CXX)
+
+# Keep build-machine paths out of release binaries and diagnostics.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    if(CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+        add_compile_options("/clang:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+                            "/clang:-ffile-prefix-map=${CMAKE_BINARY_DIR}=./build")
+    else()
+        add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+                            "-ffile-prefix-map=${CMAKE_BINARY_DIR}=./build")
+    endif()
+endif()
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,7 +30,7 @@ endif()
 
 # Opt out of constexpr mutex constructor on windows to prevent vcredist issues
 if (WIN32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR")
+    add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 endif()
 
 if (APPLE)
@@ -103,6 +115,8 @@ target_sources(PatchesLib PRIVATE
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c PROPERTIES COMPILE_FLAGS -fno-strict-aliasing)
 
+option(PW_PREGENERATED_PATCHES "Use patches generated in WSL" OFF)
+
 # Build patches elf
 if(NOT DEFINED PATCHES_C_COMPILER)
     set(PATCHES_C_COMPILER clang)
@@ -125,6 +139,7 @@ add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c
 )
 
 # Recompile patches elf into patches.c and patches.bin
+if(NOT PW_PREGENERATED_PATCHES)
 add_custom_command(OUTPUT
                        ${CMAKE_SOURCE_DIR}/patches/patches.bin
                        ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c
@@ -135,6 +150,8 @@ add_custom_command(OUTPUT
                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                    DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.elf
 )
+
+endif()
 
 # Main executable
 add_executable(Pilotwings64Recompiled)

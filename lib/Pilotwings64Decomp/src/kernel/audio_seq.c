@@ -1,0 +1,62 @@
+#include <uv_audio.h>
+#include <uv_clocks.h>
+#include <uv_memory.h>
+#include <macros.h>
+
+ALCSeq D_80261230;
+UNUSED u8 D_80261328[0x400];
+
+extern ALSeqPlayer* gSeqPlayer;
+extern ALBank* gWaveTableBank;
+extern ALSeqFile* gSeqFile;
+extern u8* gSequenceData;
+
+void uvaSeqNew(s32 arg0) {
+    s32 seq_count;
+    s32 seq_align;
+
+    seq_count = gSeqFile->seqArray[arg0].len;
+    seq_align = seq_count;
+    if (seq_count & 1) {
+        seq_align = seq_count + 1;
+    }
+
+    if (alSeqpGetState(gSeqPlayer) != 0) {
+        uvaSeqStop();
+    }
+    _uvMediaCopy(gSequenceData, gSeqFile->seqArray[arg0].offset, seq_align);
+    alCSeqNew(&D_80261230, gSequenceData);
+    alSeqpSetBank(gSeqPlayer, gWaveTableBank);
+    alSeqpSetSeq(gSeqPlayer, (ALSeq*)&D_80261230);
+}
+
+void uvaSeqPlay(void) {
+    if (alSeqpGetState(gSeqPlayer) != 0) {
+        uvaSeqStop();
+    }
+    alSeqpPlay(gSeqPlayer);
+}
+
+void uvaSeqSetTempo(f32 tempo) {
+    if (alSeqpGetState(gSeqPlayer) != 0) {
+        alSeqpSetTempo(gSeqPlayer, (s32)(60000000.0 / (f64)tempo));
+    }
+}
+
+void uvaSeqSetVol(f32 vol) {
+    if (alSeqpGetState(gSeqPlayer) != 0) {
+        alSeqpSetVol(gSeqPlayer, (s16)(vol * 32767.0f));
+    }
+}
+
+void uvaSeqStop(void) {
+    alSeqpStop(gSeqPlayer);
+    uvClkReset(UV_CLKID_SEQ);
+    while (alSeqpGetState(gSeqPlayer)) {
+        if (uvClkGetSec(UV_CLKID_SEQ) > 2.0) {
+            _uvDebugPrintf("uvaSeqStop timed out\n");
+            return;
+        }
+    }
+}
+

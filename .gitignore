@@ -55,3 +55,28 @@ RSPRecomp
 # miscellaneous
 *.swp
 
+
+# Local inputs, generated files, and private build state
+*.v64
+*.Z64
+*.V64
+*.N64
+*.ROM
+*.bin
+*.map
+*.log
+*.sav
+*.sra
+*.fla
+*.mpk
+*.zip
+!releases/*.zip
+.tools/
+dist/
+rom/
+roms/
+.vs/
+CMakeUserPresets.json
+__pycache__/
+
+.rom-config.*.toml

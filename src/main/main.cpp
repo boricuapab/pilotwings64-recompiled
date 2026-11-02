@@ -567,34 +567,31 @@ void on_launcher_init(recompui::LauncherMenu *menu) {
         recompui::GameOptionsMenuLayout::Center
     );
 
-    game_options_menu->add_default_options();
-    game_options_menu->set_width(30, recompui::Unit::Percent);
-
-    for (auto option : game_options_menu->get_options()) {
-        option->set_justify_content(recompui::JustifyContent::FlexEnd);
-        option->set_border_radius(0);
-
-        std::vector<recompui::Style *> hover_focus = {&option->hover_style, &option->focus_style};
-        for (auto style : hover_focus) {
-            style->set_background_color(recompui::theme::color::Transparent);
-        }
-    }
-
-    recompui::Element *menu_container = menu->get_menu_container();
-    menu_container->set_width(1440);
-    menu_container->unset_left();
-    menu_container->set_top(pilotwings64::launcher_options_top_offset);
-    menu_container->set_bottom(-pilotwings64::launcher_options_top_offset);
-    menu_container->set_right(50, recompui::Unit::Percent);
-    menu_container->set_translate_2D(50.0f, 0.0f, recompui::Unit::Percent);
-
+    game_options_menu->add_start_game_or_load_rom_option("Select your ROM", "Take flight");
+    game_options_menu->add_setup_controls_option("Controller & keyboard");
+    game_options_menu->add_settings_option("Display & settings");
+    game_options_menu->add_mods_option();
+    game_options_menu->add_exit_option();
+    auto container = menu->get_menu_container();
+    container->set_width(100, recompui::Unit::Percent);
+    container->set_height(100, recompui::Unit::Percent);
+    container->set_inset(0);
+    game_options_menu->set_width(36, recompui::Unit::Percent);
+    game_options_menu->set_position(recompui::Position::Absolute);
     game_options_menu->unset_left();
-    game_options_menu->set_bottom(50.0f, recompui::Unit::Percent);
-    game_options_menu->set_translate_2D(0.0f, 50.0f, recompui::Unit::Percent);
-    game_options_menu->set_right(pilotwings64::launcher_options_right_position_start);
-
+    game_options_menu->set_right(4, recompui::Unit::Percent);
+    game_options_menu->set_bottom(50, recompui::Unit::Percent);
+    game_options_menu->set_translate_2D(0, 50, recompui::Unit::Percent);
+    game_options_menu->set_background_color({8, 18, 32, 235});
+    game_options_menu->set_padding(24);
+    game_options_menu->set_border_radius(24);
+    for (auto option : game_options_menu->get_options()) {
+        option->set_border_radius(12);
+        option->set_height(76);
+        option->set_margin_bottom(8);
+        option->get_label()->set_font_size(28);
+    }
     menu->remove_default_title();
-
     pilotwings64::launcher_animation_setup(menu);
 }
 
@@ -604,6 +601,14 @@ int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
+#ifdef _WIN32
+    // Resolve resources beside the executable even when started by a shortcut.
+    wchar_t executable_path[32768];
+    const DWORD path_length = GetModuleFileNameW(nullptr, executable_path, 32768);
+    if (path_length > 0 && path_length < 32768) {
+        std::filesystem::current_path(std::filesystem::path(executable_path).parent_path());
+    }
+#endif
     pilotwings64_trace_init();
 
     recomp::Version project_version{};

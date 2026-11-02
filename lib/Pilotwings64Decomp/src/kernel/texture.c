@@ -1,0 +1,1326 @@
+#include "common.h"
+#include <uv_anim.h>
+#include <uv_clocks.h>
+#include <uv_filesystem.h>
+#include <uv_graphics.h>
+#include <uv_memory.h>
+#include <uv_sched.h>
+#include <uv_sobj.h>
+#include <uv_sprite.h>
+#include <uv_texture.h>
+#include <segment_symbols.h>
+
+typedef struct {
+    u16 count;
+    u16 unk2;
+    u16* unk4;
+    u16* unk8;
+} ParsedUVTP;
+
+typedef struct {
+    s32 tag;
+    s32 size;
+} UVBlockHeader;
+
+// forward declarations
+ParsedUVFT* uvParseTopUVFT(s32);
+ParsedUVCT* uvParseTopUVCT(s32);
+ParsedUVEN* uvParseTopUVEN(s32);
+ParsedUVLV* uvParseTopUVLV(s32);
+ParsedUVTP* uvParseTopUVTP(s32);
+void* uvParseTopUVLT(s32);
+ParsedUVMD* uvParseTopUVMD(s32);
+ParsedUVTR* uvParseTopUVTR(s32);
+ParsedUVTX* uvParseTopUVTX(s32);
+void* uvParseTopUVTI(s32);
+ParsedUVBT* uvParseTopUVBT(s32);
+ParsedUVSQ* uvParseTopUVSQ(s32);
+
+ParsedUVTX* _uvExpandTexture(u8*);
+ParsedUVLV* _uvExpandTextureCpy(u8*);
+void* _uvExpandTextureImg(u8*);
+void* _uvParseUVLT(u8*);
+ParsedUVEN* _uvParseUVEN(u8*);
+ParsedUVSQ* _uvParseUVSQ(u8*);
+ParsedUVMD* _uvParseUVMD(u8*);
+ParsedUVTP* _uvParseUVTP(u8*);
+ParsedUVTR* _uvParseUVTR(u8*);
+ParsedUVBT* _uvParseUVBT(u8*);
+
+Unk802B53C0* D_802B53C0;
+UVBlockCounts gUVBlockCounts;
+UVBlockOffsets gUVBlockOffsets;
+void* D_802B6E30[LEVEL_TEXTURE_COUNT];
+u16 D_802B7600[1000];
+u16* D_802B7DD0;
+ParsedUVLV* D_802B7DD4;
+
+extern u32 D_802B892C;
+extern u32 D_802B8934;
+
+void uvMemInitBlockHdr(void) {
+    s32 sp64;
+    s32 temp_v0;
+    u32 sp5C;
+    void* src;
+    u32 var_a1;
+    u8* romOffset;
+    u32 tag;
+    UVBlockHeader* var_a0;
+
+    uvMemSet(&gUVBlockCounts, 0, sizeof(gUVBlockCounts));
+    sp64 = uvFileReadHeader(SEGMENT_ROM_START(filetable));
+    romOffset = SEGMENT_ROM_START(filesys);
+
+    while ((tag = uvFileReadBlock(sp64, &sp5C, &src, 1)) != 0) {
+        if (tag == 'TABL') {
+            for (var_a1 = 0, var_a0 = (UVBlockHeader*)src; var_a1 < sp5C; var_a1 += 8, var_a0++) {
+                switch (var_a0->tag) {
+                case 0:
+                    break;
+                case 'UVSY':
+                    gUVBlockOffsets.UVSY[0] = romOffset;
+                    break;
+                case 'UVAN':
+                    gUVBlockOffsets.UVAN[gUVBlockCounts.UVAN++] = romOffset;
+                    break;
+                case 'UVFT':
+                    gUVBlockOffsets.UVFT[gUVBlockCounts.UVFT++] = romOffset;
+                    break;
+                case 'UVBT':
+                    gUVBlockOffsets.UVBT[gUVBlockCounts.UVBT++] = romOffset;
+                    break;
+                case 'UVMD':
+                    gUVBlockOffsets.UVMD[gUVBlockCounts.UVMD++] = romOffset;
+                    break;
+                case 'UVCT':
+                    gUVBlockOffsets.UVCT[gUVBlockCounts.UVCT++] = romOffset;
+                    break;
+                case 'UVTX':
+                    gUVBlockOffsets.UVTX[gUVBlockCounts.UVTX++] = romOffset;
+                    break;
+                case 'UVEN':
+                    gUVBlockOffsets.UVEN[gUVBlockCounts.UVEN++] = romOffset;
+                    break;
+                case 'UVLT':
+                    gUVBlockOffsets.UVLT[gUVBlockCounts.UVLT++] = romOffset;
+                    break;
+                case 'UVLV':
+                    gUVBlockOffsets.UVLV[gUVBlockCounts.UVLV++] = romOffset;
+                    break;
+                case 'UVSQ':
+                    gUVBlockOffsets.UVSQ[gUVBlockCounts.UVSQ++] = romOffset;
+                    break;
+                case 'UVTR':
+                    gUVBlockOffsets.UVTR[gUVBlockCounts.UVTR++] = romOffset;
+                    break;
+                case 'UVTP':
+                    gUVBlockOffsets.UVTP[gUVBlockCounts.UVTP++] = romOffset;
+                    break;
+                case 'UVSX':
+                    gUVBlockOffsets.UVSX[gUVBlockCounts.UVSX++] = romOffset;
+                    break;
+                default:
+                    gUVBlockOffsets.userFiles[gUVBlockCounts.userFile++] = romOffset;
+                    break;
+                }
+                romOffset += var_a0->size;
+            }
+        }
+    }
+    uvFile_80223F30(sp64);
+    uvLevelInit();
+}
+
+void* uvMemLoadDS(u32 tag, s32 palette) {
+    void* ret;
+
+    ret = NULL;
+    _uvJumpHeap(&D_802B892C);
+    do {
+        switch (tag) {
+        case 'UVSQ':
+            ret = uvParseTopUVSQ(palette);
+            break;
+        case 'UVEN':
+            ret = uvParseTopUVEN(palette);
+            break;
+        case 'UVTR':
+            ret = uvParseTopUVTR(palette);
+            break;
+        case 'UVCT':
+            ret = uvParseTopUVCT(palette);
+            break;
+        case 'UVLV':
+            ret = uvParseTopUVLV(palette);
+            break;
+        case 'UVMD':
+            ret = uvParseTopUVMD(palette);
+            break;
+        case 'UVTX':
+            ret = uvParseTopUVTX(palette);
+            break;
+        case 'UVTI':
+            ret = uvParseTopUVTI(palette);
+            break;
+        case 'UVLT':
+            ret = uvParseTopUVLT(palette);
+            break;
+        case 'UVAN':
+            ret = uvJanimLoad(palette);
+            break;
+        case 'UVFT':
+            ret = uvParseTopUVFT(palette);
+            break;
+        case 'UVBT':
+            ret = uvParseTopUVBT(palette);
+            break;
+        case 'UVTP':
+            ret = uvParseTopUVTP(palette);
+            break;
+        default:
+            break;
+        }
+    } while (_uvJumpHeap(&D_802B892C) == 0);
+    return ret;
+}
+
+void uvMemLoadPal(s32 palette) {
+    if (palette == 0xFFFF) {
+        D_802B53C0 = NULL;
+    } else {
+        D_802B53C0 = uvMemLoadDS('UVTP', palette);
+        if (D_802B53C0 == NULL) {
+            _uvDebugPrintf("uvMemLoadPal: palette %d not in dbase\n", palette);
+        }
+    }
+}
+
+void uvLevelAppend(s32 levelId) {
+    s32 i;
+    s32 j;
+    s32 id;
+    s32 var_s3;
+    s32 spA4;
+    ParsedUVLV* level;
+    ParsedUVLV sp50;
+
+    uvGfxWaitForMesg();
+    uvClkReset(UV_CLKID_TXT);
+    uvSc_8022BEB8(0);
+    D_802B7DD0 = D_802B7600;
+    D_802B7DD4 = &sp50;
+    level = gLevelData.level = uvMemLoadDS('UVLV', levelId);
+    if (level == NULL) {
+        _uvDebugPrintf("uvLevelAppend: level %d not in dbase\n", levelId);
+        return;
+    }
+
+    if (level->lightCount > LEVEL_LIGHT_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many lights %d\n", level->lightCount);
+    }
+
+    if (level->environmentCount > LEVEL_ENVIRONMENT_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many environments %d\n", level->environmentCount);
+    }
+
+    if (level->modelCount > LEVEL_MODEL_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many models %d\n", level->modelCount);
+    }
+
+    if (level->contourCount > LEVEL_CONTOUR_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many contours %d\n", level->contourCount);
+    }
+
+    if (level->textureCount > LEVEL_TEXTURE_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many textures %d\n", level->textureCount);
+    }
+
+    if (level->terraCount > LEVEL_TERRA_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many terras %d\n", level->terraCount);
+    }
+
+    if (level->animationCount > LEVEL_ANIMATION_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many animations\n", level->animationCount);
+    }
+
+    if (level->blitCount > LEVEL_BLIT_COUNT) {
+        _uvDebugPrintf("uvMemLoadDS: too many blits\n", level->blitCount);
+    }
+
+    spA4 = D_802B892C;
+
+    for (i = 0; i < level->textureCount; i++) {
+        id = level->textureIds[i];
+        var_s3 = id;
+        if (D_802B53C0 != NULL) {
+            for (j = 0; j < D_802B53C0->unk0; j++) {
+                if (id == D_802B53C0->unk4[j]) {
+                    var_s3 = D_802B53C0->unk8[j];
+                    break;
+                }
+            }
+        }
+
+        if (D_802B6E30[id] == NULL) {
+            if (D_802B6E30[var_s3] != NULL) {
+                D_802B6E30[id] = D_802B6E30[var_s3];
+            } else {
+                D_802B6E30[id] = uvMemLoadDS('UVTI', var_s3);
+            }
+        }
+    }
+    _uvMemGetBlocks(spA4, D_802B892C);
+
+    for (i = 0; i < level->lightCount; i++) {
+        id = level->lightIds[i];
+        if (gLevelData.lights[id] == NULL) {
+            gLevelData.lights[id] = uvMemLoadDS('UVLT', id);
+        }
+    }
+
+    gLevelData.lightCount = level->lightCount;
+
+    for (i = 0; i < level->environmentCount; i++) {
+        id = level->environmentIds[i];
+        if (gLevelData.environments[id] == NULL) {
+            gLevelData.environments[id] = uvMemLoadDS('UVEN', id);
+        }
+    }
+    gLevelData.environmentCount = level->environmentCount;
+
+    for (i = 0; i < level->modelCount; i++) {
+        id = level->modelIds[i];
+        if (gLevelData.models[id] == NULL) {
+            gLevelData.models[id] = uvMemLoadDS('UVMD', id);
+        }
+    }
+    gLevelData.modelCount = level->modelCount;
+
+    for (i = 0; i < level->contourCount; i++) {
+        id = level->contourIds[i];
+        if (gLevelData.contours[id] == NULL) {
+            gLevelData.contours[id] = uvMemLoadDS('UVCT', id);
+        }
+    }
+    gLevelData.contourCount = level->contourCount;
+
+    for (i = 0; i < level->textureCount; i++) {
+        id = level->textureIds[i];
+        var_s3 = id;
+        if (D_802B53C0 != NULL) {
+            for (j = 0; j < D_802B53C0->unk0; j++) {
+                if (id == D_802B53C0->unk4[j]) {
+                    var_s3 = D_802B53C0->unk8[j];
+                    break;
+                }
+            }
+        }
+
+        if (gLevelData.textures[id] == NULL) {
+            gLevelData.textures[id] = uvMemLoadDS('UVTX', var_s3);
+            uvSprtUpdateUnk(gLevelData.textures[id]);
+        }
+    }
+    gLevelData.textureCount = level->textureCount;
+
+    for (i = 0; i < level->terraCount; i++) {
+        id = level->terraIds[i];
+        if (gLevelData.terras[id] == NULL) {
+            gLevelData.terras[id] = uvMemLoadDS('UVTR', id);
+        }
+    }
+    gLevelData.terraCount = level->terraCount;
+
+    for (i = 0; i < level->sequenceCount; i++) {
+        id = level->sequenceIds[i];
+        if (gLevelData.sequences[id] == NULL) {
+            gLevelData.sequences[id] = uvMemLoadDS('UVSQ', id);
+        }
+    }
+    gLevelData.sequenceCount = level->sequenceCount;
+
+    for (i = 0; i < level->animationCount; i++) {
+        id = level->animationIds[i];
+        if (gLevelData.animations[id] == NULL) {
+            gLevelData.animations[id] = uvMemLoadDS('UVAN', id);
+        }
+    }
+
+    for (i = 0; i < level->fontCount; i++) {
+        id = level->fontIds[i];
+        if (gLevelData.fonts[id] == NULL) {
+            gLevelData.fonts[id] = uvMemLoadDS('UVFT', id);
+        }
+    }
+
+    for (i = 0; i < level->blitCount; i++) {
+        id = level->blitIds[i];
+        if (gLevelData.blits[id] == NULL) {
+            gLevelData.blits[id] = uvMemLoadDS('UVBT', id);
+        }
+    }
+
+    if (D_802B8934 != 0) {
+        _uvDebugPrintf("uvMemLoadDS: into txt img data by %d bytes\n", D_802B8934);
+    }
+    uvSc_8022BEB8(1);
+}
+
+void uvConsumeBytes(void* dst, u8** ptr, s32 size) {
+    switch (size) {
+    case 1:
+        *(s8*)dst = uvMemRead(*ptr, size);
+        *ptr += 1;
+        break;
+    case 2:
+        *(s16*)dst = uvMemRead(*ptr, size);
+        *ptr += 2;
+        break;
+    case 4:
+        *(s32*)dst = uvMemRead(*ptr, size);
+        *ptr += 4;
+        break;
+    default:
+        _uvMediaCopy(dst, *ptr, size);
+        *ptr += size;
+        break;
+    }
+}
+
+void* _uvParseUVLT(u8* arg0) {
+    void* ret;
+    ret = (void*)_uvMemAlloc(4, 4);
+    uvConsumeBytes(ret, &arg0, 4);
+    return ret;
+}
+
+ParsedUVEN* _uvParseUVEN(u8* src) {
+    uvEnvModel* modelTable;
+    u8 modelCount;
+    s32 i;
+    ParsedUVEN* uven;
+
+    uvConsumeBytes(&modelCount, &src, 1);
+    modelTable = (uvEnvModel*)_uvMemAlloc(modelCount * sizeof(uvEnvModel), 4);
+
+    for (i = 0; i < (s32)modelCount; i++) {
+        uvConsumeBytes(&modelTable[i].modelId, &src, sizeof(modelTable[i].modelId));
+        uvConsumeBytes(&modelTable[i].flag, &src, sizeof(modelTable[i].flag));
+    }
+
+    uven = (ParsedUVEN*)_uvMemAlloc(sizeof(ParsedUVEN), 4);
+    uvConsumeBytes(uven, &src, sizeof(ParsedUVEN));
+    uven->modelCount = modelCount;
+    uven->callback = 0;
+    uven->modelTable = (uven->modelCount) ? modelTable : NULL;
+    return uven;
+}
+
+ParsedUVSQ* _uvParseUVSQ(u8* src) {
+    u16 i;
+    u8 frameCount;
+    uvSeqFrame* frameTable;
+    ParsedUVSQ* uvsq;
+
+    uvConsumeBytes(&frameCount, &src, 1);
+    frameTable = (uvSeqFrame*)_uvMemAlloc(frameCount * sizeof(uvSeqFrame), 4);
+
+    for (i = 0; i < (s32)frameCount; i++) {
+        uvConsumeBytes(&frameTable[i].textureId, &src, sizeof(frameTable[i].textureId));
+        uvConsumeBytes(&frameTable[i].frameTime, &src, sizeof(frameTable[i].frameTime));
+        frameTable[i].unused = 0xFF;
+    }
+
+    uvsq = (ParsedUVSQ*)_uvMemAlloc(sizeof(ParsedUVSQ), 4);
+    uvConsumeBytes(&uvsq->mode, &src, sizeof(uvsq->mode));
+    uvConsumeBytes(&uvsq->reverse, &src, sizeof(uvsq->reverse));
+    uvConsumeBytes(&uvsq->framerate, &src, sizeof(uvsq->framerate));
+    uvsq->frameTable = frameTable;
+    uvsq->frameCount = frameCount;
+    return uvsq;
+}
+
+ParsedUVMD* _uvParseUVMD(u8* src) {
+    Vtx* vtxTable;
+    ParsedUVMD* uvmd;
+    uvModelLOD* lodTable;
+    Gfx* dlist;
+    UnkUVMD_24* var_s6;
+    uvModelPart* partTable;
+    f32* lodRadius;
+    Vtx* tempVtx;
+    s32 var_s0;
+    UnkUVMD_24* var_s0_4;
+    Mtx4F* mtxTable;
+    uvGfxState_t* stateTable;
+    UnkUVMD_6* sp8C;
+    s32 i;
+    s32 j;
+    s32 k;
+    UnkUVMD_6* temp_v0_12;
+    u8 mtxCount;
+    u8 sp7A;
+    u8 lodCount;
+    u8 sp78;
+    u8 hasTransparency;
+    u8 hasLighting;
+    u16 vtxCount;
+    u16 gfxCount;
+    u16 sp70;
+    u16 sp6E;
+
+    uvConsumeBytes(&vtxCount, &src, sizeof(vtxCount));
+    uvConsumeBytes(&lodCount, &src, sizeof(lodCount));
+    uvConsumeBytes(&mtxCount, &src, sizeof(mtxCount));
+    uvConsumeBytes(&sp7A, &src, sizeof(sp7A));
+    uvConsumeBytes(&hasTransparency, &src, sizeof(hasTransparency));
+    uvConsumeBytes(&sp6E, &src, sizeof(sp6E));
+    vtxTable = (Vtx*)_uvMemAlloc(vtxCount * sizeof(Vtx), 8);
+    _uvMediaCopy(vtxTable, src, vtxCount * sizeof(Vtx));
+    src += vtxCount * sizeof(Vtx);
+    lodRadius = (f32*)_uvMemAlloc(lodCount * sizeof(f32), 4);
+    lodTable = (uvModelLOD*)_uvMemAlloc(lodCount * sizeof(uvModelLOD), 4);
+
+    for (i = 0; i < lodCount; i++) {
+        uvConsumeBytes(&lodTable[i].partCount, &src, sizeof(lodTable[i].partCount));
+        uvConsumeBytes(&lodTable[i].billboard, &src, sizeof(lodTable[i].billboard));
+        partTable = (uvModelPart*)_uvMemAlloc(lodTable[i].partCount * sizeof(uvModelPart), 4);
+
+        for (j = 0; j < lodTable[i].partCount; j++) {
+            hasLighting = FALSE;
+            uvConsumeBytes(&partTable[j].stateCount, &src, sizeof(partTable[j].stateCount));
+            uvConsumeBytes(&partTable[j].unk5, &src, sizeof(partTable[j].unk5));
+            uvConsumeBytes(&partTable[j].unk6, &src, sizeof(partTable[j].unk6));
+            partTable[j].stateTable = (uvGfxState_t*)_uvMemAlloc(partTable[j].stateCount * sizeof(uvGfxState_t), 8);
+            stateTable = partTable[j].stateTable;
+            for (k = 0; k < partTable[j].stateCount; k++) {
+                uvConsumeBytes(&stateTable[k].state, &src, sizeof(stateTable[k].state));
+                uvConsumeBytes(&stateTable[k].xfmCount, &src, sizeof(stateTable[k].xfmCount));
+                uvConsumeBytes(&stateTable[k].triCount, &src, sizeof(stateTable[k].triCount));
+                uvConsumeBytes(&gfxCount, &src, sizeof(gfxCount));
+                if (stateTable[k].state & GFX_STATE_LIGHTING) {
+                    hasLighting = TRUE;
+                }
+
+                dlist = (Gfx*)_uvMemAlloc((gfxCount + 1) * sizeof(Gfx), 8);
+                if (1) { }
+                stateTable[k].dlist = OS_PHYSICAL_TO_K0(dlist);
+                for (var_s0 = 0; var_s0 < gfxCount; var_s0++) {
+                    uvConsumeBytes(&sp70, &src, sizeof(sp70));
+                    if (sp70 & 0x4000) {
+                        gSP1Triangle(&dlist[var_s0], (sp70 & 0xF00) >> 8, (sp70 & 0xF0) >> 4, sp70 & 0xF, 0);
+                    } else {
+                        uvConsumeBytes(&sp78, &src, sizeof(sp78));
+                        tempVtx = &vtxTable[sp70 & 0x3FFF];
+                        gSPVertex(&dlist[var_s0], OS_PHYSICAL_TO_K0(tempVtx), ((sp78 & 0xF0) >> 4) + 1, sp78 & 0xF);
+                    }
+                }
+                gSPEndDisplayList(&dlist[var_s0]);
+            }
+            partTable[j].lighting = hasLighting;
+        }
+        lodTable[i].partTable = partTable;
+        uvConsumeBytes(&lodRadius[i], &src, sizeof(lodRadius[i]));
+    }
+
+    mtxTable = (Mtx4F*)_uvMemAlloc(mtxCount * sizeof(Mtx4F), 4);
+    uvConsumeBytes(mtxTable, &src, mtxCount * sizeof(Mtx4F));
+    if (sp7A) {
+        var_s6 = (UnkUVMD_24*)_uvMemAlloc(sp7A * sizeof(UnkUVMD_24), 4);
+
+        for (i = 0; i < sp7A; i++) {
+            uvConsumeBytes(&var_s6[i], &src, sizeof(var_s6[i]));
+        }
+    } else {
+        var_s6 = NULL;
+    }
+    uvmd = (ParsedUVMD*)_uvMemAlloc(sizeof(ParsedUVMD), 4);
+    uvConsumeBytes(&uvmd->unk1C, &src, sizeof(uvmd->unk1C));
+    uvConsumeBytes(&uvmd->unk20, &src, sizeof(uvmd->unk20));
+    uvConsumeBytes(&uvmd->unk24, &src, sizeof(uvmd->unk24));
+    temp_v0_12 = (UnkUVMD_6*)_uvMemAlloc(sp6E * sizeof(UnkUVMD_6), 4);
+
+    for (i = 0; i < sp6E; i++) {
+        uvConsumeBytes(&temp_v0_12[i].unk0, &src, sizeof(temp_v0_12[i].unk0));
+        uvConsumeBytes(&temp_v0_12[i].unk2, &src, sizeof(temp_v0_12[i].unk2));
+        uvConsumeBytes(&temp_v0_12[i].unk4, &src, sizeof(temp_v0_12[i].unk4));
+    }
+
+    k = 0;
+    for (i = 0; i < sp7A; i++) {
+        var_s0_4 = &var_s6[i];
+        if (i == 0) {
+            if (var_s0_4->unk1C != 0) {
+                var_s0_4->unk20 = temp_v0_12;
+            } else {
+                var_s0_4->unk20 = NULL;
+            }
+            k = var_s0_4->unk1C;
+            sp8C = &temp_v0_12[var_s0_4->unk1C];
+        } else {
+            var_s0_4->unk20 = sp8C;
+            var_s0_4->unk1C -= k;
+            k += var_s0_4->unk1C;
+            sp8C += var_s0_4->unk1C;
+        }
+    }
+
+    uvmd->vtxTable = vtxTable;
+    uvmd->vtxCount = vtxCount;
+    uvmd->lodTable = lodTable;
+    uvmd->lodRadius = lodRadius;
+    uvmd->lodCount = lodCount;
+    uvmd->mtxTable = mtxTable;
+    uvmd->mtxCount = mtxCount;
+
+    uvmd->attrs = 0;
+    if (sp7A != 0) {
+        uvmd->attrs |= UVMD_ATTR_UNKNOWN;
+    }
+    if (hasTransparency != 0) {
+        uvmd->attrs |= UVMD_ATTR_TRANSPARENT;
+    }
+    for (i = 0; i < uvmd->lodTable->partCount; i++) {
+        for (j = 0; j < sp7A; j++) {
+            if (i == var_s6[j].unk0) {
+                break;
+            }
+        }
+        k = j;
+        if (j == sp7A) {
+            uvmd->lodTable->partTable[i].unk8 = 0;
+            uvmd->lodTable->partTable[i].unkC = 0;
+        } else {
+            for (k = j; k < sp7A; k++) {
+                if ((i + 1) == var_s6[k].unk0) {
+                    break;
+                }
+            }
+            uvmd->lodTable->partTable[i].unk8 = &var_s6[j];
+            uvmd->lodTable->partTable[i].unkC = k - j;
+        }
+    }
+    return uvmd;
+}
+
+ParsedUVCT* _uvParseUVCT(u8* src) {
+    Vtx* vtxTable;
+    Vtx* tempVtx;
+    Unk80225FBC_0x28_UnkC* spA4;
+    Unk80225FBC_0x28* spA0;
+    UnkSobjDraw* tempSp98;
+    UnkSobjDraw* sp98;
+    Unk80225FBC_0x28* tempSpA0;
+    Gfx* dlist;
+    ParsedUVCT* ret;
+    u16 sp8A;
+    u16 sp88;
+    u16 sp86;
+    s32 i;
+    s32 j;
+    u8 sp7B;
+    u8 sp7A;
+    u16 vtxCount;
+    u16 gfxCount;
+    u16 elem;
+
+    uvConsumeBytes(&vtxCount, &src, sizeof(vtxCount));
+    uvConsumeBytes(&sp8A, &src, sizeof(sp8A));
+    uvConsumeBytes(&sp86, &src, sizeof(sp86));
+    uvConsumeBytes(&sp88, &src, sizeof(sp88));
+
+    vtxTable = (Vtx*)_uvMemAlloc(vtxCount * sizeof(Vtx), 8);
+    _uvMediaCopy(vtxTable, src, vtxCount * sizeof(Vtx));
+    src += vtxCount * sizeof(Vtx);
+
+    spA4 = (void*)_uvMemAlloc(sp8A * sizeof(Unk80225FBC_0x28_UnkC), 4);
+    _uvMediaCopy((void*)spA4, src, sp8A * sizeof(Unk80225FBC_0x28_UnkC));
+    src += sp8A * sizeof(Gfx);
+
+    sp98 = (UnkSobjDraw*)_uvMemAlloc(sp86 * sizeof(UnkSobjDraw), 4);
+    for (i = 0; i < sp86; i++) {
+        tempSp98 = &sp98[i];
+        uvConsumeBytes(&sp7B, &src, sizeof(sp7B));
+        tempSp98->unk4 = (void*)_uvMemAlloc(sp7B * sizeof(Mtx), 4);
+        uvConsumeBytes(tempSp98->unk4, &src, sp7B * sizeof(Mtx));
+
+        uvConsumeBytes(&tempSp98->modelId, &src, sizeof(tempSp98->modelId));
+        uvConsumeBytes(&tempSp98->unk8, &src, sizeof(tempSp98->unk8));
+        uvConsumeBytes(&tempSp98->unkC, &src, sizeof(tempSp98->unkC));
+        uvConsumeBytes(&tempSp98->unk10, &src, sizeof(tempSp98->unk10));
+        uvConsumeBytes(&tempSp98->unk14, &src, sizeof(tempSp98->unk14));
+        uvConsumeBytes(&tempSp98->unk16, &src, sizeof(tempSp98->unk16));
+    }
+
+    spA0 = (Unk80225FBC_0x28*)_uvMemAlloc(sp88 * sizeof(Unk80225FBC_0x28), 4);
+    for (i = 0; i < sp88; i++) {
+        tempSpA0 = &spA0[i];
+        uvConsumeBytes(&tempSpA0->unk0.state, &src, sizeof(tempSpA0->unk0.state));
+        uvConsumeBytes(&tempSpA0->unk0.xfmCount, &src, sizeof(tempSpA0->unk0.xfmCount));
+        uvConsumeBytes(&tempSpA0->unk0.triCount, &src, sizeof(tempSpA0->unk0.triCount));
+        uvConsumeBytes(&gfxCount, &src, sizeof(gfxCount));
+        dlist = (Gfx*)_uvMemAlloc((gfxCount + 1) * sizeof(Gfx), 8); // +1 for G_ENDDL
+        for (j = 0; j < gfxCount; j++) {
+            uvConsumeBytes(&elem, &src, sizeof(elem));
+            if (elem & 0x4000) {
+                gSP1Triangle(&dlist[j], (elem & 0xF00) >> 8, (elem & 0xF0) >> 4, elem & 0xF, 0);
+            } else {
+                uvConsumeBytes(&sp7A, &src, sizeof(sp7A));
+                tempVtx = &vtxTable[elem & 0x3FFF];
+                gSPVertex(&dlist[j], (u32)OS_PHYSICAL_TO_K0(tempVtx), ((sp7A & 0xF0) >> 4) + 1, sp7A & 0xF);
+            }
+        }
+
+        gSPEndDisplayList(&dlist[j]); // G_ENDDL = 0xB8
+        tempSpA0->unk0.dlist = dlist;
+
+        uvConsumeBytes(&elem, &src, sizeof(elem));
+        tempSpA0->unkC = &spA4[elem];
+
+        uvConsumeBytes(&elem, &src, sizeof(elem));
+        tempSpA0->unk10 = elem;
+
+        uvConsumeBytes(&tempSpA0->unk12, &src, sizeof(tempSpA0->unk12));
+        uvConsumeBytes(&tempSpA0->unk14, &src, sizeof(tempSpA0->unk14));
+        uvConsumeBytes(&tempSpA0->unk18, &src, sizeof(tempSpA0->unk18));
+        uvConsumeBytes(&tempSpA0->unk1C, &src, sizeof(tempSpA0->unk1C));
+        uvConsumeBytes(&tempSpA0->unk20, &src, sizeof(tempSpA0->unk20));
+        uvConsumeBytes(&tempSpA0->unk24, &src, sizeof(tempSpA0->unk24));
+    }
+
+    ret = (ParsedUVCT*)_uvMemAlloc(sizeof(ParsedUVCT), 4);
+    ret->vtxTable = vtxTable;
+    ret->vtxCount = vtxCount;
+    ret->unk8 = spA0;
+    ret->unkC = sp88;
+    ret->unk10 = sp98;
+    ret->unk14 = sp86;
+    uvConsumeBytes(&ret->unk18, &src, sizeof(ret->unk18));
+    uvConsumeBytes(&ret->unk1C, &src, sizeof(ret->unk1C));
+    uvConsumeBytes(&ret->unk20, &src, sizeof(ret->unk20));
+    uvConsumeBytes(&ret->unk24, &src, sizeof(ret->unk24));
+    uvConsumeBytes(&ret->unk28, &src, sizeof(ret->unk28));
+    return ret;
+}
+
+ParsedUVTX* _uvExpandTexture(u8* src) {
+    void* sp6C;
+    Gfx* dlist;
+    ParsedUVTX* temp_v0;
+    s32 i;
+    s32 var_a0;
+    s32 id;
+    u8 temp_v0_2;
+    u16 gfxCount;
+    u16 size;
+    UnkUVTX_1C* sp4C;
+    UnkUVTX_1C* sp48;
+    f32 sp44;
+    f32 sp40;
+    Gfx* gfxCmd;
+    u16 temp_t2;
+    u32 temp_t0;
+
+    uvConsumeBytes(&size, &src, sizeof(size));
+    if (size > 0x1000) {
+        _uvDebugPrintf("_uvExpandTexture: txt image too big %d bytes (4096 max)\n", size);
+        size = 0x1000;
+    }
+    uvConsumeBytes(&gfxCount, &src, sizeof(gfxCount));
+    uvConsumeBytes(&sp44, &src, sizeof(sp44));
+    uvConsumeBytes(&sp40, &src, sizeof(sp40));
+    if ((sp44 != 0.0f) || (sp40 != 0.0f)) {
+        sp4C = (UnkUVTX_1C*)_uvMemAlloc(sizeof(UnkUVTX_1C), 4);
+        sp4C->unk0 = 1.0f;
+        sp4C->unk4 = 1.0f;
+        sp4C->unk8 = sp44;
+        sp4C->unkC = sp40;
+        sp4C->unk10 = 0.0f;
+        sp4C->unk14 = 0.0f;
+        sp4C->unk18 = 1;
+    } else {
+        sp4C = NULL;
+    }
+    uvConsumeBytes(&sp44, &src, sizeof(sp44));
+    uvConsumeBytes(&sp40, &src, sizeof(sp40));
+    if ((sp44 != 0.0f) || (sp40 != 0.0f)) {
+        sp48 = (UnkUVTX_1C*)_uvMemAlloc(sizeof(UnkUVTX_1C), 4);
+        sp48->unk0 = 1.0f;
+        sp48->unk4 = 1.0f;
+        sp48->unk8 = sp44;
+        sp48->unkC = sp40;
+        sp48->unk10 = 0.0f;
+        sp48->unk14 = 0.0f;
+        sp48->unk18 = 1;
+    } else {
+        sp48 = NULL;
+    }
+    src += size;
+    dlist = (Gfx*)_uvMemAlloc(gfxCount * sizeof(Gfx), 8);
+
+    uvConsumeBytes(dlist, &src, gfxCount * sizeof(Gfx));
+
+    temp_v0 = (ParsedUVTX*)_uvMemAlloc(sizeof(ParsedUVTX), 4);
+    uvConsumeBytes(&temp_v0->width, &src, sizeof(temp_v0->width));
+    uvConsumeBytes(&temp_v0->height, &src, sizeof(temp_v0->height));
+    uvConsumeBytes(&temp_v0->unkE, &src, sizeof(temp_v0->unkE));
+    uvConsumeBytes(&temp_v0->unkF, &src, sizeof(temp_v0->unkF));
+    uvConsumeBytes(&temp_v0->unk10, &src, sizeof(temp_v0->unk10));
+    uvConsumeBytes(&temp_v0->unk12, &src, sizeof(temp_v0->unk12));
+    uvConsumeBytes(&temp_v0->unk14, &src, sizeof(temp_v0->unk14));
+    uvConsumeBytes(&temp_v0->unk20, &src, sizeof(temp_v0->unk20));
+    uvConsumeBytes(&temp_v0->unk22, &src, sizeof(temp_v0->unk22));
+    uvConsumeBytes(&temp_v0->unk23, &src, sizeof(temp_v0->unk23));
+    uvConsumeBytes(&temp_v0->unk24, &src, sizeof(temp_v0->unk24));
+    uvConsumeBytes(&temp_v0->unk25, &src, sizeof(temp_v0->unk25));
+    uvConsumeBytes(&temp_v0->unk26, &src, sizeof(temp_v0->unk26));
+    uvConsumeBytes(&temp_v0->unk28, &src, sizeof(temp_v0->unk28));
+    temp_v0->size = size;
+    temp_t2 = temp_v0->unk12;
+    id = temp_v0->unk12 & 0xFFF;
+
+    if (D_802B53C0 != NULL) {
+        for (i = 0; i < D_802B53C0->unk0; i++) {
+            if (id == D_802B53C0->unk8[i]) {
+                id = D_802B53C0->unk4[i];
+                break;
+            }
+        }
+    }
+
+    sp6C = D_802B6E30[id];
+    if (sp6C == NULL) {
+        _uvDebugPrintf("_uvExpandTexture: texture %d not in level. State: 0x%x\n", id, temp_t2);
+    }
+    temp_v0->dlist = dlist;
+    temp_v0->unk0 = sp6C;
+    temp_v0->unk18 = sp4C;
+    temp_v0->unk1C = sp48;
+    var_a0 = 0;
+    temp_v0_2 = 0;
+
+    temp_t0 = (u32)sp6C;
+    for (i = 0; i < gfxCount; i++) {
+        gfxCmd = &dlist[i];
+
+        temp_v0_2 = gfxCmd->setimg.cmd;
+        if (temp_v0_2 == G_SETTIMG) {
+            if (var_a0 == 0) {
+                gfxCmd->setimg.dram |= (u32)OS_PHYSICAL_TO_K0(temp_t0);
+            } else {
+                gfxCmd->setimg.dram |= (u32)OS_PHYSICAL_TO_K0(D_802B6E30[temp_v0->unk14]);
+            }
+            var_a0++;
+        }
+    }
+
+    return temp_v0;
+}
+
+void* _uvExpandTextureImg(u8* src) {
+    void* retBuf;
+    u16 sp32;
+    u16 size;
+    u32 sp2C;
+    u32 sp28;
+
+    uvConsumeBytes(&size, &src, sizeof(size));
+    if (size > 0x1000) {
+        _uvDebugPrintf("_uvExpandTextureImg: txt image too big %d bytes (4096 max)\n", size);
+        size = 0x1000;
+    }
+    uvConsumeBytes(&sp32, &src, sizeof(sp32));
+    uvConsumeBytes(&sp2C, &src, sizeof(sp2C));
+    uvConsumeBytes(&sp28, &src, sizeof(sp28));
+    uvConsumeBytes(&sp2C, &src, sizeof(sp2C));
+    uvConsumeBytes(&sp28, &src, sizeof(sp28));
+    retBuf = (void*)_uvMemAlloc(size, 8);
+    _uvMediaCopy(retBuf, src, size);
+    return retBuf;
+}
+
+ParsedUVLV* _uvExpandTextureCpy(u8* src) {
+    ParsedUVLV* level;
+
+    level = D_802B7DD4;
+
+    uvConsumeBytes(&level->terraCount, &src, sizeof(level->terraCount));
+    level->terraIds = D_802B7DD0;
+
+    D_802B7DD0 += level->terraCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->terraIds, src, level->terraCount * sizeof(u16));
+    src += level->terraCount * sizeof(u16);
+
+    uvConsumeBytes(&level->lightCount, &src, sizeof(level->lightCount));
+    level->lightIds = D_802B7DD0;
+
+    D_802B7DD0 += level->lightCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->lightIds, src, level->lightCount * sizeof(u16));
+    src += level->lightCount * sizeof(u16);
+
+    uvConsumeBytes(&level->environmentCount, &src, sizeof(level->environmentCount));
+    level->environmentIds = D_802B7DD0;
+
+    D_802B7DD0 += level->environmentCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->environmentIds, src, level->environmentCount * sizeof(u16));
+    src += level->environmentCount * sizeof(u16);
+
+    uvConsumeBytes(&level->modelCount, &src, sizeof(level->modelCount));
+    level->modelIds = D_802B7DD0;
+
+    D_802B7DD0 += level->modelCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->modelIds, src, level->modelCount * sizeof(u16));
+    src += level->modelCount * sizeof(u16);
+
+    uvConsumeBytes(&level->contourCount, &src, sizeof(level->contourCount));
+    level->contourIds = D_802B7DD0;
+
+    D_802B7DD0 += level->contourCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->contourIds, src, level->contourCount * sizeof(u16));
+    src += level->contourCount * sizeof(u16);
+
+    uvConsumeBytes(&level->textureCount, &src, sizeof(level->textureCount));
+    level->textureIds = D_802B7DD0;
+
+    D_802B7DD0 += level->textureCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->textureIds, src, level->textureCount * sizeof(u16));
+    src += level->textureCount * sizeof(u16);
+
+    uvConsumeBytes(&level->sequenceCount, &src, sizeof(level->sequenceCount));
+    level->sequenceIds = D_802B7DD0;
+
+    D_802B7DD0 += level->sequenceCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->sequenceIds, src, level->sequenceCount * sizeof(u16));
+    src += level->sequenceCount * sizeof(u16);
+
+    uvConsumeBytes(&level->animationCount, &src, sizeof(level->animationCount));
+    level->animationIds = D_802B7DD0;
+
+    D_802B7DD0 += level->animationCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->animationIds, src, level->animationCount * sizeof(u16));
+    src += level->animationCount * sizeof(u16);
+
+    uvConsumeBytes(&level->fontCount, &src, sizeof(level->fontCount));
+    level->fontIds = D_802B7DD0;
+
+    D_802B7DD0 += level->fontCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->fontIds, src, level->fontCount * sizeof(u16));
+    src += level->fontCount * sizeof(u16);
+
+    uvConsumeBytes(&level->blitCount, &src, sizeof(level->blitCount));
+    level->blitIds = D_802B7DD0;
+
+    D_802B7DD0 += level->blitCount;
+    if (D_802B7DD0 >= &D_802B7600[LEVEL_OBJECT_COUNT]) {
+        _uvDebugPrintf("bump up NLV_E\n");
+    }
+    _uvMediaCopy(level->blitIds, src, level->blitCount * sizeof(u16));
+    src += level->blitCount * sizeof(u16);
+
+    return level;
+}
+
+ParsedUVTP* _uvParseUVTP(u8* src) {
+    ParsedUVTP* temp_s2;
+    u16 i;
+    u16 count;
+
+    uvConsumeBytes(&count, &src, sizeof(count));
+    temp_s2 = (ParsedUVTP*)_uvMemAlloc(sizeof(ParsedUVTP), 4);
+    temp_s2->unk4 = (u16*)_uvMemAlloc(count * 2, 4);
+    temp_s2->unk8 = (u16*)_uvMemAlloc(count * 2, 4);
+
+    for (i = 0; i < count; i++) {
+        uvConsumeBytes(&temp_s2->unk4[i], &src, sizeof(temp_s2->unk4[i]));
+        uvConsumeBytes(&temp_s2->unk8[i], &src, sizeof(temp_s2->unk8[i]));
+    }
+    temp_s2->count = count;
+    return temp_s2;
+}
+
+ParsedUVTR* _uvParseUVTR(u8* src) {
+    uvUnkTileStruct* ptr;
+    ParsedUVTR* temp_v0;
+    s32 count;
+    s32 i;
+    u8 sp47;
+    u16 sp44;
+
+    temp_v0 = (ParsedUVTR*)_uvMemAlloc(sizeof(ParsedUVTR), 4);
+    uvConsumeBytes(&temp_v0->unk0, &src, sizeof(temp_v0->unk0));
+    uvConsumeBytes(&temp_v0->unk18, &src, sizeof(temp_v0->unk18));
+    uvConsumeBytes(&temp_v0->unk19, &src, sizeof(temp_v0->unk19));
+    uvConsumeBytes(&temp_v0->unk1C, &src, sizeof(temp_v0->unk1C));
+    uvConsumeBytes(&temp_v0->unk20, &src, sizeof(temp_v0->unk20));
+    uvConsumeBytes(&temp_v0->unk24, &src, sizeof(temp_v0->unk24));
+    count = temp_v0->unk18 * temp_v0->unk19;
+    temp_v0->unk28 = (uvUnkTileStruct*)_uvMemAlloc(count * sizeof(uvUnkTileStruct), 4);
+
+    for (i = 0; i < count; i++) {
+        ptr = &temp_v0->unk28[i];
+        uvConsumeBytes(&sp47, &src, sizeof(sp47));
+        if (sp47 == 0) {
+            uvMemSet(ptr, 0, sizeof(uvUnkTileStruct));
+        } else {
+            uvConsumeBytes(&ptr->unk0, &src, sizeof(ptr->unk0));
+            uvConsumeBytes(&ptr->unk44, &src, sizeof(ptr->unk44));
+            uvConsumeBytes(&sp44, &src, sizeof(sp44));
+            ptr->unk40 = gLevelData.contours[sp44];
+        }
+    }
+    return temp_v0;
+}
+
+ParsedUVBT* _uvParseUVBT(u8* src) {
+    u8* var_a1;
+    u16 sp9A;
+    u16 sp98;
+    u16 sp96;
+    u16 sp94;
+    u16 sp92;
+    u16 sp90;
+    u16 sp8E;
+    s8 remainder2;
+    s8 remainder1;
+    s32 j;
+    u64 sp80;
+    s32 i;
+    ParsedUVBT* ret;
+    s32 sp74;
+    s32 sp70;
+    Bitmap* temp_v0_3;
+    s32 temp;
+
+    remainder2 = 0;
+    remainder1 = 0;
+
+    _uvMediaCopy(&sp80, src, 4);
+    sp80 >>= 32;
+    sp9A = (sp80 & 0xFFFF0000) >> 16;
+    sp98 = sp80;
+    src += 4;
+
+    _uvMediaCopy(&sp80, src, 4);
+    sp80 >>= 32;
+    sp96 = (sp80 & 0xFFFF0000) >> 16;
+    sp94 = sp80;
+    src += 4;
+
+    _uvMediaCopy(&sp80, src, 4);
+    sp80 >>= 32;
+    sp92 = (sp80 & 0xFFFF0000) >> 16;
+    sp90 = sp80;
+    src += 4;
+
+    _uvMediaCopy(&sp80, src, 4);
+    sp80 >>= 32;
+    temp = (sp80 & 0xFFFF0000) >> 16;
+    // fake, probably used to assign sp8C here as well
+    sp8E = temp & 0xFFFF & 0xFFFF & 0xFFFF;
+    src += 2;
+
+    ret = (ParsedUVBT*)_uvMemAlloc(sizeof(ParsedUVBT), 4);
+    ret->bmfmt = sp9A;
+    ret->bitdepth = sp98;
+    ret->width = sp96;
+    ret->height = sp92;
+    ret->unkA = sp90;
+    ret->texelHeight = sp8E;
+
+    ret->buf = (void*)_uvMemAlloc((sp94 * sp92 * sp98) / 8, 8);
+    uvConsumeBytes(ret->buf, &src, (sp94 * sp92 * sp98) / 8);
+
+    sp74 = sp96 / sp90;
+    sp70 = sp92 / sp8E;
+    if (sp96 % sp90) {
+        sp74++;
+        remainder1 = 1;
+    }
+    if (sp92 % sp8E) {
+        sp70++;
+        remainder2 = 1;
+    }
+    ret->nbitmaps = sp74 * sp70;
+    ret->bitmap = (Bitmap*)_uvMemAllocAlign8(ret->nbitmaps * sizeof(Bitmap));
+
+    var_a1 = ret->buf;
+    for (i = 0; i < sp70; i++) {
+        for (j = 0; j < sp74; j++) {
+            temp_v0_3 = &ret->bitmap[j + i * sp74];
+            temp = i + 1;
+            if (remainder2 && sp70 == temp) {
+                temp_v0_3->actualHeight = sp92 % sp8E;
+            } else {
+                temp_v0_3->actualHeight = sp8E;
+            }
+            temp = j + 1;
+            if (remainder1 && sp74 == temp) {
+                temp_v0_3->width = sp96 - (sp90 * (sp74 - 1));
+            } else {
+                temp_v0_3->width = sp90;
+            }
+            // fake, should chain assign
+            temp_v0_3->LUToffset = 0;
+            temp_v0_3->t = temp_v0_3->LUToffset;
+            temp_v0_3->s = temp_v0_3->LUToffset;
+            temp_v0_3->width_img = sp90;
+            temp_v0_3->buf = var_a1;
+            var_a1 += (temp_v0_3->actualHeight * sp90 * sp98) / 8;
+        }
+    }
+    return ret;
+}
+
+ParsedUVCT* uvParseTopUVCT(s32 arg0) {
+    s32 idx;
+    u32 tag;
+    u32 sp3C;
+    void* src;
+    ParsedUVCT* ret;
+
+    ret = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVCT[arg0]);
+    while ((tag = uvFileReadBlock(idx, &sp3C, &src, 1)) != 0) {
+        switch (tag) {
+        case 'COMM':
+            ret = _uvParseUVCT(src);
+            break;
+        default:
+            break;
+        }
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVEN* uvParseTopUVEN(s32 palette) {
+    s32 idx;
+    s32 sp28;
+    void* src;
+    ParsedUVEN* uven;
+
+    uven = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVEN[0]);
+    if (uvFile_80224170(idx, &sp28, &src, 'COMM', palette, 1) != 0) {
+        uven = _uvParseUVEN(src);
+    }
+    uvFile_80223F30(idx);
+    return uven;
+}
+
+ParsedUVLV* uvParseTopUVLV(s32 palette) {
+    s32 idx;
+    s32 sp28;
+    void* src;
+    void* ret;
+
+    ret = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVLV[0]);
+    if (uvFile_80224170(idx, &sp28, &src, 'COMM', palette, 1) != 0) {
+        ret = _uvExpandTextureCpy(src);
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVTP* uvParseTopUVTP(s32 palette) {
+    s32 idx;
+    s32 sp28;
+    void* src;
+    ParsedUVTP* ret;
+
+    ret = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVTP[0]);
+    if (uvFile_80224170(idx, &sp28, &src, 'COMM', palette, 1) != 0) {
+        ret = _uvParseUVTP(src);
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+void* uvParseTopUVLT(s32 palette) {
+    s32 idx;
+    s32 sp28;
+    void* src;
+    void* ret;
+
+    ret = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVLT[0]);
+    if (uvFile_80224170(idx, &sp28, &src, 'COMM', palette, 1) != 0) {
+        ret = _uvParseUVLT(src);
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVMD* uvParseTopUVMD(s32 arg0) {
+    s32 idx;
+    u32 tag;
+    u32 sp3C;
+    void* src;
+    void* ret;
+
+    ret = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVMD[arg0]);
+    while ((tag = uvFileReadBlock(idx, &sp3C, &src, 1)) != 0) {
+        switch (tag) {
+        case 'COMM':
+            ret = _uvParseUVMD(src);
+            break;
+        default:
+            break;
+        }
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVTR* uvParseTopUVTR(s32 arg0) {
+    s32 idx;
+    s32 sp28;
+    void* src;
+    ParsedUVTR* ret;
+
+    ret = NULL;
+    idx = uvFileReadHeader(gUVBlockOffsets.UVTR[0]);
+    if (uvFile_80224170(idx, &sp28, &src, 'COMM', arg0, 1) != 0) {
+        ret = _uvParseUVTR(src);
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVTX* uvParseTopUVTX(s32 arg0) {
+    s32 idx;
+    u32 tag;
+    u32 sp34;
+    void* src;
+    ParsedUVTX* ret;
+
+    idx = uvFileReadHeader(gUVBlockOffsets.UVTX[arg0]);
+    while ((tag = uvFileReadBlock(idx, &sp34, &src, 1)) != 0) {
+        switch (tag) {
+        case 'COMM':
+            ret = _uvExpandTexture(src);
+            break;
+        default:
+            break;
+        }
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+void* uvParseTopUVTI(s32 arg0) {
+    s32 idx;
+    u32 tag;
+    u32 sp34;
+    void* src;
+    void* ret;
+
+    idx = uvFileReadHeader(gUVBlockOffsets.UVTX[arg0]);
+
+    while ((tag = uvFileReadBlock(idx, &sp34, &src, 1)) != 0) {
+        switch (tag) {
+        case 'COMM':
+            ret = _uvExpandTextureImg(src);
+            break;
+        default:
+            break;
+        }
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVBT* uvParseTopUVBT(s32 arg0) {
+    s32 idx;
+    u32 tag;
+    u32 sp3C;
+    void* src;
+    void* ret;
+
+    idx = uvFileReadHeader(gUVBlockOffsets.UVBT[arg0]);
+    while ((tag = uvFileReadBlock(idx, &sp3C, &src, 0)) != 0) {
+        switch (tag) {
+        case 'COMM':
+            ret = _uvParseUVBT(src);
+            break;
+        default:
+            break;
+        }
+    }
+    uvFile_80223F30(idx);
+    return ret;
+}
+
+ParsedUVSQ* uvParseTopUVSQ(s32 palette) {
+    s32 idx;
+    s32 sp28;
+    void* src;
+    ParsedUVSQ* uvsq = NULL;
+
+    idx = uvFileReadHeader(gUVBlockOffsets.UVSQ[0]);
+    if (uvFile_80224170(idx, &sp28, &src, 'COMM', palette, 1) != 0) {
+        uvsq = _uvParseUVSQ(src);
+    }
+    uvFile_80223F30(idx);
+    return uvsq;
+}
+
+s32 func_80227E5C(s32 arg0, s32 arg1) {
+    void* var_v0 = NULL;
+
+    switch (arg0) {
+    case 1:
+        var_v0 = gGfxUnkPtrs->terras[arg1];
+        break;
+    case 2:
+        var_v0 = gGfxUnkPtrs->lights[arg1];
+        break;
+    case 3:
+        var_v0 = gGfxUnkPtrs->environments[arg1];
+        break;
+    case 4:
+        var_v0 = gGfxUnkPtrs->models[arg1];
+        break;
+    case 5:
+        var_v0 = gGfxUnkPtrs->textures[arg1];
+        break;
+    case 6:
+        var_v0 = gGfxUnkPtrs->sequences[arg1];
+        break;
+    }
+    if (var_v0 != NULL) {
+        return TRUE;
+    }
+    return FALSE;
+}

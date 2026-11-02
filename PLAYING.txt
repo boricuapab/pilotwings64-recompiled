@@ -1,0 +1,21 @@
+PILOTWINGS 64: RECOMPILED — custom development build
+
+Extract the entire ZIP into a folder on Windows, then open
+Pilotwings64Recompiled.exe. Keep assets and DLLs beside the executable.
+
+Select your ROM opens the native file picker. Use the US Pilotwings 64 ROM
+(SHA1 ec771aedf54ee1b214c25404fb4ec51cfd43191a).
+The game assets are imported locally; no ROM is included in this package.
+
+Display & settings > Graphics:
+- Aspect Ratio: Original (4:3) or Widescreen (adapts to the window).
+- Framerate: 60 FPS, 120 FPS, Original, Display, or Manual.
+  Higher output rates use RT64 interpolation; simulation speed is unchanged.
+- F11 / Alt+Enter toggles fullscreen.
+
+Controller & keyboard opens the input remapping and profile controls.
+Use Escape to open the configuration menu while playing.
+
+Based on gcsmith/Pilotwings64Recomp, Pilotwings64Decomp, N64Recomp,
+N64ModernRuntime, RecompFrontend and RT64. Upstream remains a work in progress.
+This development build is not an official release from those projects.

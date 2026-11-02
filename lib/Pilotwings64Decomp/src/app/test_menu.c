@@ -1,0 +1,668 @@
+#include "common.h"
+#include <uv_controller.h>
+#include <uv_font.h>
+#include <uv_geometry.h>
+#include <uv_graphics.h>
+#include <uv_matrix.h>
+#include <uv_memory.h>
+#include <uv_sprite.h>
+#include <uv_string.h>
+#include <uv_texture.h>
+#include "balls.h"
+#include "code_66160.h"
+#include "code_66F70.h"
+#include "control_info.h"
+#include "game.h"
+#include "code_9A960.h"
+#include "code_B2900.h"
+#include "credits.h"
+#include "demo.h"
+#include "falco.h"
+#include "hover_pads.h"
+#include "hud.h"
+#include "map3d.h"
+#include "results.h"
+#include "rings.h"
+#include "snap.h"
+#include "snd.h"
+#include "task.h"
+#include "test_menu.h"
+#include "text_data.h"
+
+STATIC_DATA f32 sSelMenuScreenX;
+STATIC_DATA f32 sSelMenuScreenY;
+STATIC_DATA s32 sStickDirX;
+STATIC_DATA s32 sStickDirY;
+STATIC_DATA s32 sStickIsHeld;
+STATIC_DATA s32 sMenuMinY;
+STATIC_DATA s32 sMenuMinX;
+STATIC_DATA s32 sMenuMaxY;
+STATIC_DATA s32 sMenuMaxX;
+u8 D_8037DC84; // global, but not used in this file
+STATIC_DATA char sTestNumPtsStr[4];
+STATIC_DATA u16 sWidthNumPts;
+STATIC_DATA s16 sTestPtsX;
+STATIC_DATA s16* sTestNameText;
+STATIC_DATA s16* sTestHintText;
+STATIC_DATA char sTestNumStr[3];
+STATIC_DATA u8 sDrawTestPts;
+
+STATIC_DATA s32 D_80350970 = 3; // unused
+STATIC_DATA s32 sTestMenuState = 0;
+STATIC_DATA s8 sMenuCurX = 0;
+STATIC_DATA s8 sMenuCurY = 0;
+STATIC_DATA s8 D_80350980 = 0xFF; // unused
+STATIC_DATA u8 D_80350984 = 0xFF; // unused, only ever set to 0xFF
+STATIC_DATA const char* sClassShortNames[4] = { "E", "A", "B", "P" };
+const char* gVehShortNames[7] = { "HG", "RP", "GC", "EX", "EX", "EX", "BD" };
+STATIC_DATA s32 sCurTestIdx = 0;
+STATIC_DATA s32 D_803509B8 = 0; // unused, only ever set to 0
+
+// forward declarations
+void testMenuInitText(s32 testIdx);
+void testMenuInit(Unk80367710*, s32);
+u8 testMenuHandler(Unk80367710*);
+void testMenuDraw(Camera* camera, u8 classIdx, u8 vehIdx);
+void testMenu_8034A428(void);
+
+s32 testMenuMainRender(Unk80362690_Unk0* arg0, Unk80367710* arg1) {
+    Camera* camera;
+    u8 classIdx;
+    u8 temp_s0_3;
+    u8 vehIdx;
+    u8 temp_v0;
+
+    camera = arg0->unk70;
+    vehIdx = arg0->veh;
+    testMenuInit(arg1, D_8037DC84);
+    if (D_8037DC84 != 0) {
+        D_8037DC84 = 0;
+    }
+    classIdx = arg0->cls;
+    uvGfxBegin();
+    testMenuDraw(camera, classIdx, vehIdx);
+    uvGfxEnd();
+    do {
+        classIdx = arg0->cls;
+        uvGfxBegin();
+        testMenuDraw(camera, classIdx, vehIdx);
+        uvGfxEnd();
+        temp_v0 = testMenuHandler(arg1);
+    } while (temp_v0 == 6);
+    testMenu_8034A428();
+    if (temp_v0 == 0xFE) {
+        D_8037DC84 = 1;
+    }
+    if ((temp_v0 == 0xFF) || (temp_v0 == 0xFE)) {
+        return temp_v0;
+    }
+    return arg1->unk4[sCurTestIdx].unk0;
+}
+
+// returns true if test is one of the Shutter Bug tests
+s32 testMenuShutterBug(void) {
+    Unk80362690_Unk0* unkC;
+
+    unkC = &D_80362690->unkC[D_80362690->unk9C];
+    if ((unkC->veh == VEHICLE_HANG_GLIDER) &&
+        ((unkC->cls == CLASS_A && sCurTestIdx == 0) || (unkC->cls == CLASS_B && sCurTestIdx == 1) || (unkC->cls == CLASS_PILOT && sCurTestIdx == 2))) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void testMenuInitText(s32 testIdx) {
+    Unk80362690_Unk0* unkC;
+    s32 ptsWidth;
+    s32 pts;
+    s32 test;
+    s32 numPts;
+    s32 ptsAdded;
+    char nameStr[20];
+    char hintStr[20];
+
+    ptsAdded = FALSE;
+    unkC = &D_80362690->unkC[D_80362690->unk9C];
+    if (IS_MAIN_VEHICLE(unkC->veh)) {
+        numPts = testGetPointCount(&D_80364210[D_80362690->unk9C], unkC->cls, testIdx, unkC->veh);
+    } else {
+        numPts = 0;
+        if (unkC->veh >= VEHICLE_SKY_DIVING) {
+            numPts = testGetPointCount(&D_80364210[D_80362690->unk9C], testIdx, 0, unkC->veh);
+        } else {
+            numPts = 0;
+            for (test = 0; test < taskGetTestCount(unkC->cls, unkC->veh); test++) {
+                pts = testGetPointCount(&D_80364210[D_80362690->unk9C], unkC->cls, test, unkC->veh);
+                if (pts != 0x7F) {
+                    numPts += pts;
+                    ptsAdded = TRUE;
+                }
+            }
+            if (!ptsAdded) {
+                numPts = 0x7F;
+            }
+        }
+    }
+
+    if (numPts != 0x7F) {
+        uvFontSet(3);
+        uvFontScale(1.0, 1.0);
+        uvSprintf(sTestNumPtsStr, "%d", numPts);
+        sWidthNumPts = uvFontWidth(sTestNumPtsStr);
+        uvFontScale(0.699999988079071045, 1.0);
+        ptsWidth = uvFontWidth("PTS");
+        sTestPtsX = 258 - (ptsWidth + sWidthNumPts) / 2;
+        sDrawTestPts = TRUE;
+    } else {
+        sDrawTestPts = FALSE;
+    }
+
+    if (unkC->veh == VEHICLE_BIRDMAN || IS_MAIN_VEHICLE(unkC->veh)) {
+        uvSprintf(nameStr, "%s_%s_%d_N", sClassShortNames[unkC->cls], gVehShortNames[unkC->veh], testIdx + 1);
+        uvSprintf(hintStr, "%s_%s_%d_H", sClassShortNames[unkC->cls], gVehShortNames[unkC->veh], testIdx + 1);
+    } else {
+        uvSprintf(nameStr, "%s_%s_%d_N", sClassShortNames[unkC->veh - 2], gVehShortNames[unkC->veh], testIdx + 1);
+        uvSprintf(hintStr, "%s_%s_%d_H", sClassShortNames[unkC->veh - 2], gVehShortNames[unkC->veh], testIdx + 1);
+    }
+    sTestNameText = textGetDataByName(nameStr);
+    sTestHintText = textGetDataByName(hintStr);
+    if (IS_MAIN_VEHICLE(unkC->veh) || unkC->veh == VEHICLE_BIRDMAN) {
+        uvSprintf(sTestNumStr, "%d", testIdx + 1);
+    } else {
+        uvSprintf(sTestNumStr, "%d", 1);
+    }
+}
+
+void testMenuInit(Unk80367710* arg0, s32 arg1) {
+    Unk80362690_Unk0* temp_v1;
+
+    temp_v1 = &D_80362690->unkC[D_80362690->unk9C];
+    if (arg1 != 2) {
+        uvLevelInit();
+        uvLevelAppend((s32)D_8034F43C[D_8034F420[temp_v1->veh][temp_v1->cls]]);
+        uvLevelAppend(0xB);
+        uvLevelAppend(0x5B);
+        uvLevelAppend(0x87);
+        uvLevelAppend(0x53);
+        textLoadBlock(0x42);
+    }
+
+    D_803509B8 = 0;
+    if (arg1 == 0) {
+        if (D_80362690->unkA3 == 0) {
+            sCurTestIdx = 0;
+            D_80362690->unkA3 = 1;
+        } else {
+            sCurTestIdx++;
+            if (sCurTestIdx >= arg0->testCount) {
+                sCurTestIdx = 0;
+            }
+        }
+        if (temp_v1->veh != VEHICLE_BIRDMAN && IS_BONUS_VEHICLE(temp_v1->veh)) {
+            sCurTestIdx = temp_v1->cls;
+        }
+        if (temp_v1->veh != VEHICLE_BIRDMAN && IS_BONUS_VEHICLE(temp_v1->veh)) {
+            temp_v1->cls = sCurTestIdx;
+            temp_v1->test = 0;
+        } else {
+            temp_v1->test = sCurTestIdx;
+        }
+    }
+    taskInitTest(temp_v1->cls, temp_v1->veh, temp_v1->test, &D_80362690->map, &D_80362690->terraId, &D_80362690->envId);
+    map3dLoad(D_80362690, 0);
+    if (arg1 == 0) {
+        sTestMenuState = 0;
+    }
+    // clang-format off
+    uvSprtProps(0,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_SCORING),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_POS(50, 46),
+        SPRT_PROP_END
+    );
+    uvSprtProps(1,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_POS(50, 71),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_START),
+        SPRT_PROP_END
+    );
+    uvSprtProps(2,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_POS(128, 46),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_CONTROL),
+        SPRT_PROP_END
+    );
+    uvSprtProps(3,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_POS(128, 71),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_VIEW_MAP),
+        SPRT_PROP_END
+    );
+    uvSprtProps(4,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_POS(206, 46),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_SAMPLE_PHOTO),
+        SPRT_PROP_END
+    );
+    uvSprtProps(5,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_POS(206, 71),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_HINT),
+        SPRT_PROP_END
+    );
+    uvSprtProps(6,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_POS(43, 212),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_TEST_TITLE),
+        SPRT_PROP_END
+    );
+    uvSprtProps(7,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_POS(239, 215),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_TOP_SCORE),
+        SPRT_PROP_END
+    );
+    uvSprtProps(8,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_POS(206, 71),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_RETURN),
+        SPRT_PROP_END
+    );
+    uvSprtProps(9,
+        SPRT_PROP_ENABLED(TRUE),
+        SPRT_PROP_DIM(64, 18),
+        SPRT_PROP_POS(128, 71),
+        SPRT_PROP_COLOR(0xFF, 0xFF, 0xFF, 0xFF),
+        SPRT_PROP_BLIT(BLIT_TEST_MENU_BUTTON_VIEW_DEMO),
+        SPRT_PROP_END
+    );
+    // clang-format on
+    if (arg1 == 0) {
+        sMenuCurX = 0;
+        sMenuCurY = 1;
+        sSelMenuScreenX = (sMenuCurX * 78) + 47;
+        sSelMenuScreenY = (sMenuCurY * 25) + 26;
+        sStickDirX = sStickDirY = 0;
+        D_80350984 = 0xFF;
+    }
+    sDrawTestPts = FALSE;
+    testMenuInitText(sCurTestIdx);
+}
+
+u8 testMenuHandler(Unk80367710* arg0) {
+    Unk80362690_Unk0* sp6C;
+    s32 testIdxAdj;
+    u32 sp64;
+    s32 menuPrevX;
+    s32 menuPrevY;
+    f32 stickX;
+    f32 stickY;
+    Vec3F sp48; // passed to db_getstart, but result not used
+    s32 var_a2;
+
+    sp6C = &D_80362690->unkC[D_80362690->unk9C];
+    testIdxAdj = 0;
+    if (sTestMenuState == 1) {
+        map3dHandler(D_80362690->unk9C, 0);
+        if (demoButtonPress(D_80362690->unk9C, A_BUTTON | B_BUTTON | START_BUTTON) != 0) {
+            sTestMenuState = 0;
+            if (demoButtonPress(D_80362690->unk9C, A_BUTTON | START_BUTTON) != 0) {
+                sndPlaySfx(SFX_UI_VIEW_MAP);
+            } else if (demoButtonPress(D_80362690->unk9C, B_BUTTON) != 0) {
+                sndPlaySfx(SFX_UI_CANCEL);
+            }
+            return 6;
+        }
+    } else {
+        demo_80323020();
+        if (sTestMenuState == 2) {
+            if (sp6C->cls == CLASS_BEGINNER && IS_MAIN_VEHICLE(sp6C->veh)) {
+                sMenuMinX = 1;
+                sMenuMaxX = 2;
+            } else {
+                sMenuMinX = 2;
+                sMenuMaxX = 2;
+            }
+            sMenuMinY = 1;
+            sMenuMaxY = 1;
+        } else {
+            sMenuMinY = 0;
+            sMenuMaxY = 1;
+            sMenuMinX = 0;
+            sMenuMaxX = 2;
+        }
+        stickX = demoGetInputs(D_80362690->unk9C, INPUT_AXIS_X);
+        stickY = demoGetInputs(D_80362690->unk9C, INPUT_AXIS_Y);
+        sStickDirX = sStickDirY = 0;
+
+        if (ABS_NOEQ(stickX) < 0.75f && ABS_NOEQ(stickY) < 0.75f) {
+            sStickIsHeld = FALSE;
+        } else if (!sStickIsHeld) {
+            if (stickX > 0.75f) {
+                sStickDirX = 1;
+                sStickIsHeld = TRUE;
+            }
+            if (stickX < -0.75f) {
+                sStickDirX = -1;
+                sStickIsHeld = TRUE;
+            }
+            if (stickY > 0.75f) {
+                sStickDirY = 1;
+                sStickIsHeld = TRUE;
+            }
+            if (stickY < -0.75f) {
+                sStickDirY = -1;
+                sStickIsHeld = TRUE;
+            }
+        }
+
+        menuPrevX = sMenuCurX;
+        menuPrevY = sMenuCurY;
+        sMenuCurX += sStickDirX;
+        sMenuCurY += sStickDirY;
+
+        if (sMenuCurX < sMenuMinX) {
+            sMenuCurX = sMenuMinX;
+        } else if (sMenuMaxX < sMenuCurX) {
+            sMenuCurX = sMenuMaxX;
+        }
+
+        if (sMenuCurY < sMenuMinY) {
+            sMenuCurY = sMenuMinY;
+        } else if (sMenuMaxY < sMenuCurY) {
+            sMenuCurY = sMenuMaxY;
+        }
+
+        if ((sTestMenuState != 2) && (sMenuCurX == 2) && (sMenuCurY == 0)) {
+            if (!testMenuShutterBug()) {
+                sMenuCurX = menuPrevX;
+                sMenuCurY = menuPrevY;
+            }
+        }
+
+        if ((menuPrevX != sMenuCurX) || (menuPrevY != sMenuCurY)) {
+            sndPlaySfxVolPitchPan(SFX_UI_MOVE_CHIME, 1.0f, 1.03f, 0.0f);
+        }
+        sSelMenuScreenX = (sMenuCurX * 78) + 47;
+        sSelMenuScreenY = (sMenuCurY * 25) + 26;
+        sp64 = (sMenuCurX - sMenuMinX) + ((sMenuCurY - sMenuMinY) * ((sMenuMaxX - sMenuMinX) + 1));
+        if (sTestMenuState != 2) {
+            if (demoButtonPress(D_80362690->unk9C, R_CBUTTONS) != 0) {
+                testIdxAdj = 1;
+            } else if (demoButtonPress(D_80362690->unk9C, L_CBUTTONS) != 0) {
+                testIdxAdj = -1;
+            }
+
+            if (sp6C->veh != VEHICLE_BIRDMAN && IS_BONUS_VEHICLE(sp6C->veh)) {
+                testIdxAdj = 0;
+            }
+            if (testIdxAdj != 0) {
+                var_a2 = sCurTestIdx;
+                sMenuCurX = sMenuMinX;
+                sMenuCurY = sMenuMaxY;
+                sSelMenuScreenX = (sMenuCurX * 78) + 47;
+                sSelMenuScreenY = (sMenuCurY * 25) + 26;
+                sp64 = (sMenuCurX - sMenuMinX) + ((sMenuCurY - sMenuMinY) * ((sMenuMaxX - sMenuMinX) + 1));
+
+                if (sp6C->veh != VEHICLE_BIRDMAN && IS_BONUS_VEHICLE(sp6C->veh)) {
+                    if (sCurTestIdx == arg0->testCount - 1) {
+                        sCurTestIdx = 0;
+                    } else {
+                        sCurTestIdx++;
+                    }
+                } else {
+                    sCurTestIdx += testIdxAdj;
+                    if (sCurTestIdx >= arg0->testCount) {
+                        sCurTestIdx = 0;
+                    }
+                    if ((s16)sCurTestIdx < 0) { // TODO: cast is needed, why?
+                        sCurTestIdx = arg0->testCount - 1;
+                    }
+                }
+                if (sCurTestIdx != var_a2) {
+                    sndPlaySfxVolPitchPan(0x6A, 1.0f, 0.5f, 0.0f);
+                    map3dDeinit(D_80362690, 0);
+                    if (sp6C->veh != VEHICLE_BIRDMAN && IS_BONUS_VEHICLE(sp6C->veh)) {
+                        sp6C->cls = sCurTestIdx;
+                        sp6C->test = 0;
+                    } else {
+                        sp6C->test = sCurTestIdx;
+                    }
+                    taskInitTest(sp6C->cls, sp6C->veh, sp6C->test, &D_80362690->map, &D_80362690->terraId, &D_80362690->envId);
+                    map3dLoad(D_80362690, 0);
+                    testMenuInitText(sp6C->test);
+                }
+            }
+        }
+
+        if (demoButtonPress(D_80362690->unk9C, A_BUTTON | START_BUTTON) != 0) {
+            if (sTestMenuState == 2) {
+                if ((sp6C->cls == CLASS_BEGINNER) && (IS_MAIN_VEHICLE(sp6C->veh))) {
+                    switch (sp64) {
+                    case 0:
+                        sndPlaySfxVolPitchPan(SFX_UI_HINT, 1.0f, 1.22f, 0.0f);
+                        return 0xFE;
+                    case 1:
+                        sndPlaySfxVolPitchPan(SFX_UI_HINT, 1.0f, 1.22f, 0.0f);
+                        sTestMenuState = 0;
+                        break;
+                    }
+                } else {
+                    if (sp64 == 0) {
+                        sndPlaySfxVolPitchPan(SFX_UI_HINT, 1.0f, 1.22f, 0.0f);
+                        sTestMenuState = 0;
+                    }
+                }
+            } else {
+                switch (sp64) {
+                case 3:
+                    sndPlaySfx(SFX_UI_TEST_START);
+                    return sCurTestIdx;
+                case 0:
+                    sndPlaySfx(SFX_UI_SCORING);
+                    resultHandler(0);
+                    break;
+                case 4:
+                    sndPlaySfx(SFX_UI_VIEW_MAP);
+                    db_getstart(&sp6C->unk2C, &sp48, NULL, NULL);
+                    testMenu_8034A428();
+                    hud_8031A2CC();
+                    D_80362690->unkA0 = 1;
+                    ringsLoad();
+                    hoverPadLoad();
+                    ballsLoad();
+                    falcoLoad();
+                    falcoDeinit();
+                    ringsDeinit();
+                    hoverPadDeinit();
+                    ballsDeinit();
+                    D_80362690->unkA0 = 0;
+                    map3dMain(D_80362690, 1);
+                    testMenuInit(arg0, 2);
+                    break;
+                case 5:
+                    sndPlaySfxVolPitchPan(SFX_UI_HINT, 1.0f, 1.22f, 0.0f);
+                    sTestMenuState = 2;
+                    break;
+                case 2:
+                    sndPlaySfx(SFX_UI_CONFIRM);
+                    func_8033FB14();
+                    testMenu_8034A428();
+                    func_8033E3A8(3);
+                    testMenuInit(arg0, 1);
+                    break;
+                case 1:
+                    sndPlaySfxVolPitchPan(SFX_UI_CONTROL, 1.0f, 0.8f, 0.0f);
+                    testMenu_8034A428();
+                    contInfoMainRender();
+                    testMenuInit(arg0, 2);
+                    break;
+                default:
+                    break;
+                }
+            }
+        } else {
+            if (demoButtonPress(D_80362690->unk9C, B_BUTTON) != 0) {
+                sndPlaySfx(SFX_UI_CANCEL);
+                if (sTestMenuState == 2) {
+                    // these u8 values are needed to load integer literals at runtime
+                    u16 col2ScreenX = (2 * 78) + 47;
+                    u16 row1ScreenY = (1 * 25) + 26;
+                    sTestMenuState = 0;
+                    sMenuCurX = 2;
+                    sMenuCurY = 1;
+                    sSelMenuScreenX = col2ScreenX;
+                    sSelMenuScreenY = row1ScreenY;
+                } else {
+                    return 0xFF;
+                }
+            }
+        }
+    }
+    return 6;
+}
+
+void testMenuDraw(Camera* camera, u8 classIdx, u8 vehIdx) {
+    s32 pad1;
+    s32 pad21;
+    s32 var_s0;
+    s32 idx;
+    char* strIdAppend;
+    u32 pad2;
+    u32 strIdLen;
+    s32 pad3;
+    char sp8C[108];
+    char strId[52];
+    s16* sp54;
+    s32 temp_v0_3;
+    UNUSED s32 pad4;
+    Unk80362690_Unk0* sp48;
+    s32 var_a1;
+
+    sp48 = &D_80362690->unkC[D_80362690->unk9C];
+    if ((sp48->veh != VEHICLE_BIRDMAN) && IS_BONUS_VEHICLE(vehIdx)) {
+        taskLoadNames(classIdx, 0, vehIdx, sp8C, strId);
+    } else {
+        taskLoadNames(classIdx, sCurTestIdx, vehIdx, sp8C, strId);
+    }
+    strIdLen = uvStrlen(strId);
+    if (strIdLen == 0) {
+        uvSprintf(strId, "%s_%s_%d\n", sClassShortNames[sp48->cls], gVehShortNames[sp48->veh], sCurTestIdx + 1);
+        strIdLen = uvStrlen(strId);
+    }
+    strIdAppend = &strId[strIdLen];
+    strIdAppend[0] = '_';
+    strIdAppend[1] = 'M';
+    strIdAppend[2] = '\0';
+    func_8033F6F8(&camera->unk108, &camera->unk108);
+    map3dRender(D_80362690, 0);
+    if (sTestMenuState != 1) {
+        if (sTestMenuState != 2) {
+            sp54 = textGetDataByName(strId);
+        } else {
+            sp54 = sTestHintText;
+        }
+        screenDrawBox2(38, 80, 244, 110, 2, 0, 0xA0, 0);
+        screenDrawBox2(38, 195, 191, 25, 2, 0, 0xA0, 0);
+        if (sp48->veh != VEHICLE_BIRDMAN) {
+            screenDrawBox2(235, 195, 48, 25, 2, 0, 0xA0, 0);
+        }
+        func_80314154();
+
+        if (sTestMenuState == 2) {
+            if (sp48->cls == CLASS_BEGINNER && IS_MAIN_VEHICLE(sp48->veh)) {
+                uvSprtDraw(9);
+            }
+            uvSprtDraw(6);
+            if (sp48->veh != VEHICLE_BIRDMAN) {
+                uvSprtDraw(7);
+            }
+            uvSprtDraw(8);
+        } else {
+            for (var_s0 = 0; var_s0 < 8; var_s0++) {
+                if ((var_s0 == 4) && (testMenuShutterBug() != 0)) {
+                    uvSprtDraw(4);
+                } else if ((var_s0 == 7) && (sp48->veh != VEHICLE_BIRDMAN)) {
+                    uvSprtDraw(7);
+                } else if ((var_s0 != 4) && (var_s0 != 7)) {
+                    uvSprtDraw(var_s0);
+                }
+            }
+
+            if ((sp48->veh == VEHICLE_BIRDMAN || IS_MAIN_VEHICLE(sp48->veh)) && (taskGetTestCount(sp48->cls, sp48->veh) >= 2)) {
+                uvGfxStatePush();
+                uvGfxSetFlags(GFX_STATE_XLU);
+                uvGfxClearFlags(GFX_STATE_AA | GFX_STATE_ZBUFFER);
+                uvGfxBindTexture(0x11B);
+                uvVtxBeginPoly();
+                uvVtx(31, 142, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtx(31, 127, 0, 0, 0x1E0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtx(46, 127, 0, 0x1E0, 0x1E0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtx(46, 142, 0, 0x1E0, 0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtxEndPoly();
+                uvVtxBeginPoly();
+                uvVtx(273, 142, 0, 0x1E0, 0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtx(273, 127, 0, 0x1E0, 0x1E0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtx(288, 127, 0, 0, 0x1E0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtx(288, 142, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF);
+                uvVtxEndPoly();
+                uvGfxStatePop();
+            }
+        }
+        func_802DEE44(sSelMenuScreenX + 0.5, sSelMenuScreenY + 0.5, 0x46, 0x18, 3, 0xC8, 0xC8, 0, 0x64, 0x64, 0);
+        func_803141E4();
+        uvFontSet(0);
+        uvFontScale(1.0, 0.800000011920929);
+        uvFontColor(0xBE, 0xBE, 0xBE, 0xFF);
+        uvFontPrintStr(67, 200, sTestNumStr);
+        if (sTestNameText != NULL) {
+            uvFontSet(6);
+            uvFontColor(0xBE, 0xBE, 0xBE, 0xFF);
+            uvFontScale(1.0, 1.0);
+            uvFontPrintStr16(79, 196, sTestNameText, 0xFF, 0xFFE);
+        }
+        if (sDrawTestPts && (sp48->veh != VEHICLE_BIRDMAN)) {
+            uvFontSet(3);
+            uvFontColor(0xBE, 0xBE, 0xBE, 0xFF);
+            uvFontScale(1.0, 1.0);
+            uvFontPrintStr((u16)sTestPtsX, 196, sTestNumPtsStr);
+            uvFontColor(0xAA, 0xAA, 0xAA, 0xFF);
+            uvFontScale(0.699999988079071, 1.0);
+            uvFontPrintStr((u16)sTestPtsX + sWidthNumPts + 1, 196, "PTS");
+        }
+        if (sp54 != NULL) {
+            uvFontSet(6);
+            uvFontColor(0xD2, 0xD2, 0xD2, 0xFF);
+            uvFontScale(1.0, 1.0);
+            idx = 0;
+            for (var_a1 = 166; var_a1 > -114; var_a1 -= 14) {
+                temp_v0_3 = uvFontPrintStr16(46, var_a1, &sp54[idx], 0xFF, 0xFFE);
+                if (temp_v0_3 == -1) {
+                    break;
+                }
+                idx += temp_v0_3;
+            }
+        }
+        uvFontGenDlist();
+    }
+}
+
+void testMenu_8034A428(void) {
+    map3dDeinit(D_80362690, 0);
+}

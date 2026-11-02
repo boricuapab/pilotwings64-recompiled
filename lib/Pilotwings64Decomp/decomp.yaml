@@ -1,0 +1,51 @@
+name: Pilotwings 64
+repo: https://github.com/gcsmith/Pilotwings64Decomp
+platform: n64
+versions:
+- name: us
+  fullname: US
+  sha1: ec771aedf54ee1b214c25404fb4ec51cfd43191a
+  paths:
+    target: "baserom.us.z64"
+    build_dir: "build"
+    map: "build/pilotwings64.us.map"
+    compiled_target: "build/pilotwings64.us.z64"
+    elf: "build/pilotwings64.us.elf"
+    expected_dir: "expected"
+    asm: "asm"
+    nonmatchings: "asm/nonmatchings"
+
+tools:
+  decompme:
+    preset: 202
+  permuter:
+    decompme_compilers:
+      tools/ido7.1/cc: ido7.1
+      tools/ido5.3/cc: ido5.3
+  mapfile_parser:
+    progress_report:
+      output: build/progress.json
+      check_asm_paths: False
+      report_data: True
+      prefixes_to_trim:
+        - build/lib/
+        - build/src/
+        - build/asm/us/rev0/data/
+        - build/asm/us/rev0
+        - build/asm/jp/rev0/data
+        - build/asm/jp/rev0
+        - build/
+      categories:
+        - id: kernel
+          name: kernel
+          paths:
+            - kernel
+        - id: app
+          name: app
+          paths:
+            - app
+        - id: libultra
+          name: libultra
+          paths:
+            - ultralib
+
